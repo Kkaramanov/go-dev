@@ -28,7 +28,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.60.3
+          version: latest
 
       - name: Run unit tests
         run: go test -v -race -coverprofile=coverage.out ./...
