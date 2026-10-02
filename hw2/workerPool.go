@@ -70,8 +70,8 @@ func (w *Worker) Process(ctx context.Context, job int) Result {
 	}
 
 	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != http.StatusOK {
