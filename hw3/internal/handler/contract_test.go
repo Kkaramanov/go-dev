@@ -12,7 +12,7 @@ import (
 	"time"
 
 	moviepb "github.com/Kkaramanov/go-dev/hw3/api"
-	"github.com/Kkaramanov/go-dev/hw3/internal/adapter/stand"
+	"github.com/Kkaramanov/go-dev/hw3/internal/domain"
 	grpcapi "github.com/Kkaramanov/go-dev/hw3/internal/handler/grpc"
 	httpapi "github.com/Kkaramanov/go-dev/hw3/internal/handler/http"
 	"github.com/Kkaramanov/go-dev/hw3/internal/usecase"
@@ -23,25 +23,28 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func service(t *testing.T) *usecase.Service {
-	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/1/info.0.json", "/2/info.0.json", "/3/info.0.json":
-			var id int
-			_, _ = fmt.Sscanf(r.URL.Path, "/%d/info.0.json", &id)
-			_, _ = fmt.Fprintf(w, `{"id":%d,"title":"Film","year":2020,"director":"Director"}`, id)
-		case "/5/info.0.json":
-			w.WriteHeader(http.StatusTooManyRequests)
-		case "/6/info.0.json":
-			_, _ = w.Write([]byte(`{`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(server.Close)
-	return usecase.New(stand.New(server.URL, server.Client(), time.Second), 3)
+type contractReader struct{}
+
+func (contractReader) GetMovie(ctx context.Context, id int64) (domain.Movie, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Movie{}, err
+	}
+	if id >= 1 && id <= 3 {
+		return domain.Movie{ID: id, Title: "Film", Year: 2020, Director: "Director"}, nil
+	}
+	code, message := domain.NotFound, fmt.Sprintf("movie %d: stand returned HTTP 404", id)
+	if id == 5 {
+		code, message = domain.RateLimited, "movie 5: stand returned HTTP 429"
+	}
+	if id == 6 {
+		code, message = domain.InvalidResponse, "movie 6: invalid movie JSON from stand"
+	}
+	return domain.Movie{}, domain.Failure(id, code, message, nil)
 }
+func (r contractReader) GetLastMovie(ctx context.Context) (domain.Movie, error) {
+	return r.GetMovie(ctx, 3)
+}
+func service(t *testing.T) *usecase.Service { t.Helper(); return usecase.New(contractReader{}, 3) }
 
 func TestHTTPContract(t *testing.T) {
 	handler := httpapi.New(service(t))

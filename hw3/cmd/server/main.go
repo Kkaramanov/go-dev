@@ -14,10 +14,12 @@ import (
 
 	moviepb "github.com/Kkaramanov/go-dev/hw3/api"
 	"github.com/Kkaramanov/go-dev/hw3/cmd/server/config"
+	"github.com/Kkaramanov/go-dev/hw3/internal/adapter/postgres"
 	"github.com/Kkaramanov/go-dev/hw3/internal/adapter/stand"
 	"github.com/Kkaramanov/go-dev/hw3/internal/handler/grpc"
 	"github.com/Kkaramanov/go-dev/hw3/internal/handler/http"
 	"github.com/Kkaramanov/go-dev/hw3/internal/usecase"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -37,6 +39,34 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	dbCtx, cancelDB := context.WithTimeout(ctx, 30*time.Second)
+	pool, err := pgxpool.New(dbCtx, cfg.DatabaseURL)
+	if err != nil {
+		cancelDB()
+		return fmt.Errorf("configure PostgreSQL: %w", err)
+	}
+	defer pool.Close()
+	if err = pool.Ping(dbCtx); err != nil {
+		cancelDB()
+		return fmt.Errorf("connect PostgreSQL: %w", err)
+	}
+	if err = postgres.Migrate(dbCtx, pool); err != nil {
+		cancelDB()
+		return fmt.Errorf("migrate PostgreSQL: %w", err)
+	}
+	cancelDB()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	defer client.CloseIdleConnections()
+	repository := postgres.New(pool)
+	synchronizer := usecase.NewSynchronizer(stand.New(cfg.MovieBaseURL, client, 5*time.Second), repository, 10)
+	saved, err := synchronizer.Sync(ctx)
+	if err != nil {
+		return fmt.Errorf("synchronize movies: %w", err)
+	}
+	slog.Info("movies synchronized", "saved", saved)
+	svc := usecase.New(repository, 10)
+
 	httpListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen HTTP: %w", err)
@@ -47,10 +77,6 @@ func run() error {
 		return fmt.Errorf("listen gRPC: %w", err)
 	}
 	defer func() { _ = grpcListener.Close() }()
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	defer client.CloseIdleConnections()
-	svc := usecase.New(stand.New(cfg.MovieBaseURL, client, 5*time.Second), 10)
 	httpServer := &http.Server{
 		Handler:           httpapi.New(svc),
 		ReadHeaderTimeout: 5 * time.Second,

@@ -3,7 +3,7 @@
   "info": {
     "title": "Movies API",
     "version": "1.0.0",
-    "description": "HTTP API внешнего фильм-стенда. Запрос к стенду ограничен 5 секундами, операция — 30 секундами."
+    "description": "HTTP API фильмов из PostgreSQL. Таймаут операции — 30 секунд."
   },
   "paths": {
     "/load-movies": {
@@ -24,7 +24,7 @@
           "502": {"$ref": "#/components/responses/RangeFailure"},
           "503": {"$ref": "#/components/responses/RangeFailure"},
           "504": {
-            "description": "Истёк таймаут операции или всех запросов к стенду",
+            "description": "Истёк таймаут операции",
             "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/Error"}, {"$ref": "#/components/schemas/LoadResult"}]}}}
           }
         }
@@ -34,14 +34,14 @@
       "get": {
         "summary": "Найти последний доступный фильм",
         "operationId": "getLastMovie",
-        "description": "Экспоненциальный и бинарный поиск по непрерывному диапазону ID от 1. Только HTTP 404 стенда считается границей диапазона.",
+        "description": "Возвращает фильм с наибольшим ID в базе данных.",
         "responses": {
           "200": {"description": "Последний фильм", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Movie"}}}},
-          "404": {"description": "На стенде нет фильмов", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "В базе данных нет фильмов", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "408": {"$ref": "#/components/responses/Canceled"},
-          "502": {"$ref": "#/components/responses/StandFailure"},
-          "503": {"$ref": "#/components/responses/StandFailure"},
-          "504": {"$ref": "#/components/responses/StandFailure"}
+          "502": {"$ref": "#/components/responses/StorageFailure"},
+          "503": {"$ref": "#/components/responses/StorageFailure"},
+          "504": {"$ref": "#/components/responses/StorageFailure"}
         }
       }
     }
@@ -79,8 +79,8 @@
     "responses": {
       "BadRequest": {"description": "from/to отсутствуют, повторяются, не являются положительными целыми, from > to или диапазон превышает 10000", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
       "Canceled": {"description": "Запрос отменён", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
-      "StandFailure": {"description": "502: ошибка стенда или некорректный JSON. 503: стенд недоступен или вернул 429. 504: таймаут.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
-      "RangeFailure": {"description": "Не удалось загрузить ни один фильм. 404: фильм не найден. 502: ошибка стенда/JSON. 503: стенд недоступен или вернул 429. Ошибки каждого ID перечислены в errors.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoadResult"}}}}
+      "StorageFailure": {"description": "503: база данных недоступна. 504: таймаут.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "RangeFailure": {"description": "Не удалось загрузить ни один фильм. 404: фильм не найден. 503: база данных недоступна. Ошибки каждого ID перечислены в errors.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoadResult"}}}}
     }
   }
 }

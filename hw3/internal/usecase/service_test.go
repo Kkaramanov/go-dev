@@ -20,6 +20,8 @@ func (f providerFunc) GetMovie(ctx context.Context, id int64) (domain.Movie, err
 	return f(ctx, id)
 }
 
+func (f providerFunc) GetLastMovie(ctx context.Context) (domain.Movie, error) { return f(ctx, 999) }
+
 func TestLoadMoviesPreservesOrderAndPartialErrors(t *testing.T) {
 	var active, peak atomic.Int32
 	provider := providerFunc(func(ctx context.Context, id int64) (domain.Movie, error) {
@@ -68,7 +70,7 @@ func TestInvalidRangesDoNotCallProvider(t *testing.T) {
 	}
 }
 
-func TestGetLastMovie(t *testing.T) {
+func TestFindLastMovie(t *testing.T) {
 	for _, last := range []int64{0, 1, 2, 3, 100, math.MaxInt64} {
 		t.Run(strconv.FormatInt(last, 10), func(t *testing.T) {
 			calls := 0
@@ -79,7 +81,7 @@ func TestGetLastMovie(t *testing.T) {
 				}
 				return domain.Movie{ID: id}, nil
 			})
-			got, err := usecase.New(provider, 1).GetLastMovie(context.Background())
+			got, err := usecase.FindLastMovie(context.Background(), provider)
 			if last == 0 {
 				if err == nil || domain.Classify(err) != domain.NotFound {
 					t.Fatalf("empty stand: %v", err)
@@ -96,7 +98,7 @@ func TestGetLastMovie(t *testing.T) {
 	}
 }
 
-func TestGetLastMovieAbortsOnProviderFailure(t *testing.T) {
+func TestFindLastMovieAbortsOnProviderFailure(t *testing.T) {
 	for _, failingID := range []int64{1, 4, 6} {
 		failure := domain.Failure(failingID, domain.RateLimited, "rate limited", nil)
 		provider := providerFunc(func(ctx context.Context, id int64) (domain.Movie, error) {
@@ -108,7 +110,7 @@ func TestGetLastMovieAbortsOnProviderFailure(t *testing.T) {
 			}
 			return domain.Movie{ID: id}, nil
 		})
-		_, err := usecase.New(provider, 1).GetLastMovie(context.Background())
+		_, err := usecase.FindLastMovie(context.Background(), provider)
 		if !errors.Is(err, failure) {
 			t.Fatalf("failure at %d: %v", failingID, err)
 		}
@@ -173,5 +175,20 @@ func TestLoadMoviesCancellationInFlight(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("load did not stop after cancellation")
+	}
+}
+
+func TestGetLastMovieUsesRepository(t *testing.T) {
+	calls := 0
+	reader := providerFunc(func(ctx context.Context, id int64) (domain.Movie, error) {
+		calls++
+		if id != 999 {
+			t.Fatalf("unexpected lookup: %d", id)
+		}
+		return domain.Movie{ID: 42}, nil
+	})
+	movie, err := usecase.New(reader, 2).GetLastMovie(context.Background())
+	if err != nil || movie.ID != 42 || calls != 1 {
+		t.Fatalf("got %+v, %v, calls=%d", movie, err, calls)
 	}
 }
