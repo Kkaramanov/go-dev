@@ -4,22 +4,20 @@ import (
 	"context"
 
 	moviepb "github.com/Kkaramanov/go-dev/hw3/api"
-	"github.com/Kkaramanov/go-dev/hw3/internal/movie"
+	"github.com/Kkaramanov/go-dev/hw3/internal/domain"
+	"github.com/Kkaramanov/go-dev/hw3/internal/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type Server struct {
 	moviepb.UnimplementedMovieServiceServer
-	service movie.Service
+	service usecase.MovieUseCase
 }
 
-func New(service movie.Service) *Server { return &Server{service: service} }
+func New(service usecase.MovieUseCase) *Server { return &Server{service: service} }
 
 func (s *Server) LoadMovies(ctx context.Context, req *moviepb.LoadMoviesRequest) (*moviepb.LoadMoviesResponse, error) {
-	if err := movie.ValidateRange(req.GetFrom(), req.GetTo()); err != nil {
-		return nil, rpcError(err)
-	}
 	result, err := s.service.LoadMovies(ctx, req.GetFrom(), req.GetTo())
 	if err != nil {
 		return nil, rpcError(err)
@@ -53,27 +51,27 @@ func (s *Server) GetLastMovie(ctx context.Context, _ *moviepb.GetLastMovieReques
 	return toProto(result), nil
 }
 
-func toProto(item movie.Movie) *moviepb.Movie {
+func toProto(item domain.Movie) *moviepb.Movie {
 	return &moviepb.Movie{Id: item.ID, Title: item.Title, Year: item.Year, Director: item.Director}
 }
 
 func rpcError(err error) error {
-	return status.Error(rpcCode(movie.Classify(err)), err.Error())
+	return status.Error(rpcCode(domain.Classify(err)), err.Error())
 }
 
-func rpcCode(code movie.Code) codes.Code {
+func rpcCode(code domain.Code) codes.Code {
 	switch code {
-	case movie.InvalidArgument:
+	case domain.InvalidArgument:
 		return codes.InvalidArgument
-	case movie.NotFound:
+	case domain.NotFound:
 		return codes.NotFound
-	case movie.Timeout:
+	case domain.Timeout:
 		return codes.DeadlineExceeded
-	case movie.Canceled:
+	case domain.Canceled:
 		return codes.Canceled
-	case movie.RateLimited:
+	case domain.RateLimited:
 		return codes.ResourceExhausted
-	case movie.InvalidResponse:
+	case domain.InvalidResponse:
 		return codes.DataLoss
 	default:
 		return codes.Unavailable

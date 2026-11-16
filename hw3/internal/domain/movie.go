@@ -1,16 +1,15 @@
-package movie
+package domain
 
 import (
 	"context"
 	"errors"
-	"fmt"
 )
 
 type Movie struct {
-	ID       int64  `json:"id"`
-	Title    string `json:"title"`
-	Year     int32  `json:"year"`
-	Director string `json:"director"`
+	ID       int64
+	Title    string
+	Year     int32
+	Director string
 }
 
 type Code string
@@ -27,10 +26,10 @@ const (
 )
 
 type Error struct {
-	ID      int64  `json:"id,omitempty"`
-	Code    Code   `json:"code"`
-	Message string `json:"message"`
-	Cause   error  `json:"-"`
+	ID      int64
+	Code    Code
+	Message string
+	Cause   error
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -54,22 +53,7 @@ func Classify(err error) Code {
 	return UpstreamError
 }
 
-const MaxRange = 10000
-
-func ValidateRange(from, to int64) error {
-	if from < 1 || to < from || to-from >= MaxRange {
-		return Failure(0, InvalidArgument,
-			fmt.Sprintf("from and to must be positive, from <= to, at most %d movies per request", MaxRange), nil)
-	}
-	return nil
-}
-
 type Result struct {
-	Movies []Movie  `json:"movies"`
-	Errors []*Error `json:"errors"`
-}
-
-type Service interface {
-	LoadMovies(context.Context, int64, int64) (Result, error)
-	GetLastMovie(context.Context) (Movie, error)
+	Movies []Movie
+	Errors []*Error
 }

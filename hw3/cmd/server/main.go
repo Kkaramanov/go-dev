@@ -13,11 +13,11 @@ import (
 	"time"
 
 	moviepb "github.com/Kkaramanov/go-dev/hw3/api"
-	"github.com/Kkaramanov/go-dev/hw3/internal/config"
-	"github.com/Kkaramanov/go-dev/hw3/internal/grpcapi"
-	"github.com/Kkaramanov/go-dev/hw3/internal/httpapi"
-	"github.com/Kkaramanov/go-dev/hw3/internal/service"
-	"github.com/Kkaramanov/go-dev/hw3/internal/stand"
+	"github.com/Kkaramanov/go-dev/hw3/cmd/server/config"
+	"github.com/Kkaramanov/go-dev/hw3/internal/adapter/stand"
+	"github.com/Kkaramanov/go-dev/hw3/internal/handler/grpc"
+	"github.com/Kkaramanov/go-dev/hw3/internal/handler/http"
+	"github.com/Kkaramanov/go-dev/hw3/internal/usecase"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -50,12 +50,12 @@ func run() error {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	defer client.CloseIdleConnections()
-	svc := service.New(stand.New(cfg.MovieBaseURL, client, 5*time.Second), 10)
+	svc := usecase.New(stand.New(cfg.MovieBaseURL, client, 5*time.Second), 10)
 	httpServer := &http.Server{
 		Handler:           httpapi.New(svc),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      service.RequestTimeout + 5*time.Second,
+		WriteTimeout:      usecase.RequestTimeout + 5*time.Second,
 		IdleTimeout:       time.Minute,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}

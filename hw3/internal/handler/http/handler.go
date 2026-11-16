@@ -6,25 +6,22 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Kkaramanov/go-dev/hw3/internal/movie"
+	"github.com/Kkaramanov/go-dev/hw3/internal/domain"
+	"github.com/Kkaramanov/go-dev/hw3/internal/usecase"
 	swaggerFiles "github.com/swaggo/files/v2"
 )
 
 //go:embed docs/*
 var docs embed.FS
 
-func New(service movie.Service) http.Handler {
+func New(service usecase.MovieUseCase) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /load-movies", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		from, errFrom := strconv.ParseInt(query.Get("from"), 10, 64)
 		to, errTo := strconv.ParseInt(query.Get("to"), 10, 64)
 		if errFrom != nil || errTo != nil || len(query["from"]) != 1 || len(query["to"]) != 1 {
-			writeJSON(w, http.StatusBadRequest, movie.Failure(0, movie.InvalidArgument, "from and to must each be supplied once as integers", nil))
-			return
-		}
-		if err := movie.ValidateRange(from, to); err != nil {
-			writeError(w, err)
+			writeError(w, domain.Failure(0, domain.InvalidArgument, "from and to must each be supplied once as integers", nil))
 			return
 		}
 		result, err := service.LoadMovies(r.Context(), from, to)
@@ -33,14 +30,14 @@ func New(service movie.Service) http.Handler {
 			return
 		}
 		if len(result.Errors) == 0 {
-			writeJSON(w, http.StatusOK, result.Movies)
+			writeJSON(w, http.StatusOK, toMovies(result.Movies))
 			return
 		}
 		code := http.StatusMultiStatus
 		if len(result.Movies) == 0 {
 			code = statusCode(result.Errors[0].Code)
 		}
-		writeJSON(w, code, result)
+		writeJSON(w, code, toResult(result))
 	})
 	mux.HandleFunc("GET /last-movie", func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.GetLastMovie(r.Context())
@@ -48,7 +45,7 @@ func New(service movie.Service) http.Handler {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, result)
+		writeJSON(w, http.StatusOK, toMovie(result))
 	})
 	mux.HandleFunc("GET /swagger/index.html", func(w http.ResponseWriter, r *http.Request) {
 		data, err := docs.ReadFile("docs/index.html")
@@ -73,21 +70,21 @@ func New(service movie.Service) http.Handler {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	code := movie.Classify(err)
-	writeJSON(w, statusCode(code), movie.Failure(0, code, err.Error(), nil))
+	code := domain.Classify(err)
+	writeJSON(w, statusCode(code), errorResponse{Code: code, Message: err.Error()})
 }
 
-func statusCode(code movie.Code) int {
+func statusCode(code domain.Code) int {
 	switch code {
-	case movie.InvalidArgument:
+	case domain.InvalidArgument:
 		return http.StatusBadRequest
-	case movie.NotFound:
+	case domain.NotFound:
 		return http.StatusNotFound
-	case movie.Timeout:
+	case domain.Timeout:
 		return http.StatusGatewayTimeout
-	case movie.Canceled:
+	case domain.Canceled:
 		return http.StatusRequestTimeout
-	case movie.RateLimited, movie.Unavailable:
+	case domain.RateLimited, domain.Unavailable:
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusBadGateway
