@@ -1,0 +1,86 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Movies API",
+    "version": "1.0.0",
+    "description": "HTTP API внешнего фильм-стенда. Запрос к стенду ограничен 5 секундами, операция — 30 секундами."
+  },
+  "paths": {
+    "/load-movies": {
+      "get": {
+        "summary": "Загрузить фильмы в диапазоне [from; to]",
+        "operationId": "loadMovies",
+        "description": "Положительные ID, from <= to, не более 10000 фильмов. Фильмы и ошибки упорядочены по ID. При полном успехе возвращается массив; при частичном — объект movies/errors и HTTP 207. Если не загружен ни один фильм, возвращается объект movies/errors и статус первой ошибки по ID.",
+        "parameters": [
+          {"name": "from", "in": "query", "required": true, "schema": {"type": "integer", "format": "int64", "minimum": 1}, "example": 1},
+          {"name": "to", "in": "query", "required": true, "schema": {"type": "integer", "format": "int64", "minimum": 1}, "example": 10}
+        ],
+        "responses": {
+          "200": {"description": "Все фильмы загружены", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/Movie"}}}}},
+          "207": {"description": "Частичная загрузка: ошибки отдельных ID указаны явно", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoadResult"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/RangeFailure"},
+          "408": {"$ref": "#/components/responses/Canceled"},
+          "502": {"$ref": "#/components/responses/RangeFailure"},
+          "503": {"$ref": "#/components/responses/RangeFailure"},
+          "504": {
+            "description": "Истёк таймаут операции или всех запросов к стенду",
+            "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/Error"}, {"$ref": "#/components/schemas/LoadResult"}]}}}
+          }
+        }
+      }
+    },
+    "/last-movie": {
+      "get": {
+        "summary": "Найти последний доступный фильм",
+        "operationId": "getLastMovie",
+        "description": "Экспоненциальный и бинарный поиск по непрерывному диапазону ID от 1. Только HTTP 404 стенда считается границей диапазона.",
+        "responses": {
+          "200": {"description": "Последний фильм", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Movie"}}}},
+          "404": {"description": "На стенде нет фильмов", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "408": {"$ref": "#/components/responses/Canceled"},
+          "502": {"$ref": "#/components/responses/StandFailure"},
+          "503": {"$ref": "#/components/responses/StandFailure"},
+          "504": {"$ref": "#/components/responses/StandFailure"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Movie": {
+        "type": "object",
+        "required": ["id", "title", "year", "director"],
+        "properties": {
+          "id": {"type": "integer", "format": "int64", "example": 1},
+          "title": {"type": "string", "example": "To Rome with Love"},
+          "year": {"type": "integer", "format": "int32", "example": 2012},
+          "director": {"type": "string", "example": "Woody Allen"}
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "id": {"type": "integer", "format": "int64", "description": "ID фильма, если ошибка относится к конкретному ID"},
+          "code": {"type": "string", "enum": ["invalid_argument", "not_found", "rate_limited", "upstream_error", "invalid_response", "unavailable", "timeout", "canceled"]},
+          "message": {"type": "string"}
+        }
+      },
+      "LoadResult": {
+        "type": "object",
+        "required": ["movies", "errors"],
+        "properties": {
+          "movies": {"type": "array", "items": {"$ref": "#/components/schemas/Movie"}},
+          "errors": {"type": "array", "items": {"$ref": "#/components/schemas/Error"}}
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {"description": "from/to отсутствуют, повторяются, не являются положительными целыми, from > to или диапазон превышает 10000", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Canceled": {"description": "Запрос отменён", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "StandFailure": {"description": "502: ошибка стенда или некорректный JSON. 503: стенд недоступен или вернул 429. 504: таймаут.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "RangeFailure": {"description": "Не удалось загрузить ни один фильм. 404: фильм не найден. 502: ошибка стенда/JSON. 503: стенд недоступен или вернул 429. Ошибки каждого ID перечислены в errors.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoadResult"}}}}
+    }
+  }
+}

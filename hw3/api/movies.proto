@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package movies.v1;
+
+option go_package = "github.com/Kkaramanov/go-dev/hw3/api;moviepb";
+
+service MovieService {
+  rpc LoadMovies(LoadMoviesRequest) returns (LoadMoviesResponse);
+  rpc GetLastMovie(GetLastMovieRequest) returns (Movie);
+}
+
+message Movie {
+  int64 id = 1;
+  string title = 2;
+  int32 year = 3;
+  string director = 4;
+}
+
+message LoadMoviesRequest {
+  int64 from = 1;
+  int64 to = 2;
+}
+
+message GetLastMovieRequest {}
+
+message MovieError {
+  int64 id = 1;
+  string code = 2;
+  string message = 3;
+}
+
+message LoadMoviesResponse {
+  repeated Movie movies = 1;
+  repeated MovieError errors = 2;
+}
